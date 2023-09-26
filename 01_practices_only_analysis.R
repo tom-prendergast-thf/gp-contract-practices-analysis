@@ -52,6 +52,48 @@ LA_mapping <- s3read_using(read.csv,
                            bucket = bucket) 
 
 
+### Call fingertips data from API
+inds <- data.frame(indicators())
+
+positive_experience <- data.frame(fingertips_data(IndicatorID = 93438, AreaTypeID = 7)) %>%
+  filter(TimeperiodSortable == '20210000' & AreaType == 'GPs') %>%
+  select(AreaCode, Value) %>%
+  rename(positive_experience = Value)
+
+QOF_achievement <- data.frame(fingertips_data(IndicatorID = 295, AreaTypeID = 7)) %>%
+  filter(TimeperiodSortable == '20210000' & AreaType == 'GPs') %>%
+  select(AreaCode, Value) %>%
+  rename(QOF_achievement = Value)
+
+deprivation <- data.frame(fingertips_data(IndicatorID = 93553, AreaTypeID = 7)) %>%
+  filter(TimeperiodSortable == '20190000' & AreaType == 'GPs') %>%
+  select(AreaCode, Value) %>%
+  rename(deprivation = Value)
+
+#over_65 <- data.frame(fingertips_data(IndicatorID = 93081, AreaTypeID = 7))
+ # filter(TimeperiodSortable == '20210000' & AreaType == 'GPs')
+
+#over_85 <- data.frame(fingertips_data(IndicatorID = 93226, AreaTypeID = 7))
+ # filter(TimeperiodSortable == '20210000' & AreaType == 'GPs')
+
+caring_responsibility <- data.frame(fingertips_data(IndicatorID = 352, AreaTypeID = 7)) %>%
+  filter(TimeperiodSortable == '20210000' & AreaType == 'GPs') %>%
+  select(AreaCode, Value, Count) %>%
+  rename(carers_prop_GPsurvey = Value, numbers_carers_GPsurvey = Count)
+
+caring_responsibility_allvars <- data.frame(fingertips_data(IndicatorID = 352, AreaTypeID = 7)) %>%
+  filter(TimeperiodSortable == '20210000' & AreaType == 'GPs')
+
+#carers_social_contact <- data.frame(fingertips_data(IndicatorID = 90638, AreaTypeID = 15))
+ # filter(TimeperiodSortable == '20210000')
+
+#carer_support_spend <- data.frame(fingertips_data(IndicatorID = 2080, AreaTypeID = 15))
+ # filter(TimeperiodSortable == '20210000' & AreaType == 'GPs')
+
+#carer_QoL <- data.frame(fingertips_data(IndicatorID = 2505, AreaTypeID = 15))
+ # filter(TimeperiodSortable == '20210000' & AreaType == 'GPs')
+
+
 #####################################
 ####### CLEAN & JOIN GP DATA ########
 #####################################
@@ -72,12 +114,6 @@ gp_contract_frailty <- gp_contract_data %>%
   pivot_wider(names_from = MEASURE, values_from = VALUE) %>%
   mutate(prop_frailty = Numerator/Denominator)
 
-
-ggplot(gp_contract_UC, aes(x = VALUE)) +
-  geom_histogram()
-
-ggplot(gp_contract_frailty, aes(x = prop_frailty)) +
-  geom_histogram()
 
 gp_contract_join <- left_join(gp_contract_UC, gp_contract_frailty, by = "PRACTICE_CODE")
 
@@ -100,7 +136,7 @@ fixed_gp_patients$LSOA_CODE <- fixed_gp_patients$LSOA_CODE_FIXED
 
 # Join gp datasets
 gp_join <- full_join(fixed_gp_patients, gp_contract_join, by = "PRACTICE_CODE") %>%
-  select(PRACTICE_CODE, PRACTICE_NAME, LSOA_CODE, NUMBER_OF_PATIENTS, VALUE, prop_frailty) %>%
+  select(PRACTICE_CODE, PRACTICE_NAME, LSOA_CODE, NUMBER_OF_PATIENTS, VALUE, prop_frailty, Denominator) %>%
   rename(TOTAL_UNPAID_CARERS = VALUE) %>%
   group_by(PRACTICE_CODE) %>%
   mutate(TOTAL_PRACTICE_PATIENTS = sum(NUMBER_OF_PATIENTS)) %>%
@@ -110,9 +146,24 @@ gp_join <- full_join(fixed_gp_patients, gp_contract_join, by = "PRACTICE_CODE") 
 
 practice_aggregation <- gp_join %>%
   group_by(PRACTICE_CODE, PRACTICE_NAME) %>%
-  summarise(UC = median(TOTAL_UNPAID_CARERS), PATIENTS = median(TOTAL_PRACTICE_PATIENTS), prop_frailty = median(prop_frailty)) %>%
-  mutate(prop_carers = UC/PATIENTS)
+  summarise(UC = median(TOTAL_UNPAID_CARERS), PATIENTS = median(TOTAL_PRACTICE_PATIENTS), prop_frailty = median(prop_frailty), over65 = median(Denominator)) %>%
+  mutate(prop_carers = UC/PATIENTS) %>%
+  mutate(prop_over65 = over65/PATIENTS)
 
-ggplot(practice_aggregation, aes(x = prop_frailty, y = prop_carers)) +
-  geom_point()
-  
+practice_aggregation_join <- practice_aggregation %>%
+  left_join(., positive_experience, by = c('PRACTICE_CODE' = 'AreaCode')) %>%
+  left_join(., QOF_achievement, by = c('PRACTICE_CODE' = 'AreaCode')) %>%
+  left_join(., deprivation, by = c('PRACTICE_CODE' = 'AreaCode')) %>%
+  left_join(., caring_responsibility, by = c('PRACTICE_CODE' = 'AreaCode')) %>%
+  mutate(imputed_GPsurvey_carers = (carers_prop_GPsurvey/100) * PATIENTS) %>%
+  mutate(GP_survey_coverage = UC/imputed_GPsurvey_carers)
+
+ggplot(practice_aggregation_join, aes(x = carers_prop_GPsurvey)) +
+  geom_histogram()
+
+ggplot(practice_aggregation_join, aes(x = GP_survey_coverage)) +
+  geom_histogram()
+
+ggplotly(ggplot(practice_aggregation_join, aes(x = prop_carers, y = (carers_prop_GPsurvey/100))) +
+  geom_point())
+
