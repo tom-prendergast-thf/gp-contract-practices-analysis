@@ -110,8 +110,9 @@ gp_join <- full_join(fixed_gp_patients, gp_contract_join, by = "PRACTICE_CODE") 
 
 practice_aggregation <- gp_join %>%
   group_by(PRACTICE_CODE, PRACTICE_NAME) %>%
-  summarise(UC = median(TOTAL_UNPAID_CARERS), PATIENTS = median(TOTAL_PRACTICE_PATIENTS), prop_frailty = median(prop_frailty))
+  summarise(UC = median(TOTAL_UNPAID_CARERS), PATIENTS = median(TOTAL_PRACTICE_PATIENTS), prop_frailty = median(prop_frailty)) %>%
+  mutate(prop_carers = UC/PATIENTS)
 
-ggplot(practice_aggregation, aes(x = UC/PATIENTS)) +
-  geom_histogram()
+ggplot(practice_aggregation, aes(x = prop_frailty, y = prop_carers)) +
+  geom_point()
   
